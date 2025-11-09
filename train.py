@@ -82,10 +82,10 @@ def validate(model, dataloader, criterion, device):
 def main():
     # Configuration
     config = {
-        'data_dir': 'CatFLW dataset',
+        'data_dir': '/Users/elaine01px2019/Downloads/CatFLW dataset',
         'batch_size': 32,
-        'num_epochs': 2,  # Reduced for testing
-        'learning_rate': 0.001,
+        'num_epochs': 50,  # Increased for better training
+        'learning_rate': 0.0001,  # Lower learning rate for better convergence
         'val_split': 0.2,
         'num_workers': 2,  # Reduced for stability
         'backbone': 'resnet18',
@@ -163,7 +163,7 @@ def main():
     # Loss function and optimizer
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=config['learning_rate'])
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, verbose=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10)
     
     # TensorBoard writer
     writer = SummaryWriter(log_dir=config['log_dir'])

@@ -51,11 +51,12 @@ class CatLandmarkModel(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(num_features, 512),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.5),
+            nn.Dropout(0.3),  # Reduced dropout
             nn.Linear(512, 256),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.5),
-            nn.Linear(256, num_landmarks * 2)
+            nn.Dropout(0.3),  # Reduced dropout
+            nn.Linear(256, num_landmarks * 2),
+            nn.Sigmoid()  # Constrain outputs to [0, 1] range
         )
         
     def forward(self, x):

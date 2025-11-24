@@ -400,7 +400,7 @@
 				DEVELOPMENT_TEAM = Y4K3DY7YQA;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIAppFonts = "Fonts/Poppins-Black.ttf Fonts/Poppins-BlackItalic.ttf Fonts/Poppins-Bold.ttf Fonts/Poppins-BoldItalic.ttf Fonts/Poppins-ExtraBold.ttf Fonts/Poppins-ExtraBoldItalic.ttf Fonts/Poppins-ExtraLight.ttf Fonts/Poppins-ExtraLightItalic.ttf Fonts/Poppins-Italic.ttf Fonts/Poppins-Light.ttf Fonts/Poppins-LightItalic.ttf Fonts/Poppins-Medium.ttf Fonts/Poppins-MediumItalic.ttf Fonts/Poppins-Regular.ttf Fonts/Poppins-SemiBold.ttf Fonts/Poppins-SemiBoldItalic.ttf Fonts/Poppins-Thin.ttf Fonts/Poppins-ThinItalic.ttf";
+				INFOPLIST_KEY_UIAppFonts = "Poppins-Black.ttf Poppins-BlackItalic.ttf Poppins-Bold.ttf Poppins-BoldItalic.ttf Poppins-ExtraBold.ttf Poppins-ExtraBoldItalic.ttf Poppins-ExtraLight.ttf Poppins-ExtraLightItalic.ttf Poppins-Italic.ttf Poppins-Light.ttf Poppins-LightItalic.ttf Poppins-Medium.ttf Poppins-MediumItalic.ttf Poppins-Regular.ttf Poppins-SemiBold.ttf Poppins-SemiBoldItalic.ttf Poppins-Thin.ttf Poppins-ThinItalic.ttf";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -429,7 +429,7 @@
 				DEVELOPMENT_TEAM = Y4K3DY7YQA;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIAppFonts = "Fonts/Poppins-Black.ttf Fonts/Poppins-BlackItalic.ttf Fonts/Poppins-Bold.ttf Fonts/Poppins-BoldItalic.ttf Fonts/Poppins-ExtraBold.ttf Fonts/Poppins-ExtraBoldItalic.ttf Fonts/Poppins-ExtraLight.ttf Fonts/Poppins-ExtraLightItalic.ttf Fonts/Poppins-Italic.ttf Fonts/Poppins-Light.ttf Fonts/Poppins-LightItalic.ttf Fonts/Poppins-Medium.ttf Fonts/Poppins-MediumItalic.ttf Fonts/Poppins-Regular.ttf Fonts/Poppins-SemiBold.ttf Fonts/Poppins-SemiBoldItalic.ttf Fonts/Poppins-Thin.ttf Fonts/Poppins-ThinItalic.ttf";
+				INFOPLIST_KEY_UIAppFonts = "Poppins-Black.ttf Poppins-BlackItalic.ttf Poppins-Bold.ttf Poppins-BoldItalic.ttf Poppins-ExtraBold.ttf Poppins-ExtraBoldItalic.ttf Poppins-ExtraLight.ttf Poppins-ExtraLightItalic.ttf Poppins-Italic.ttf Poppins-Light.ttf Poppins-LightItalic.ttf Poppins-Medium.ttf Poppins-MediumItalic.ttf Poppins-Regular.ttf Poppins-SemiBold.ttf Poppins-SemiBoldItalic.ttf Poppins-Thin.ttf Poppins-ThinItalic.ttf";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

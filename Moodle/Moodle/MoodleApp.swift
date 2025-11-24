@@ -11,6 +11,13 @@ import SwiftUI
 struct MoodleApp: App {
     let persistenceController = PersistenceController.shared
 
+    init() {
+        // Debug: List available fonts on app launch
+        #if DEBUG
+        FontHelper.listAvailableFonts()
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

@@ -14,36 +14,43 @@ extension Color {
 
 // MARK: - Main Content View
 struct ContentView: View {
+    @State private var showAnalyzeCat = false
+    
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                // Header Section
-                HeaderView()
-                
-                // Main Content
-                VStack(spacing: 20) {
-                    // Section Title
-                    SectionHeaderView(title: "Latest Pain Analysis", action: "See All")
-                        .padding(.horizontal, 20)
-                        .padding(.top, 20)
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Header Section
+                    HeaderView()
                     
-                    // Action Buttons
-                    ActionButtonsView()
-                        .padding(.horizontal, 20)
-                    
-                    // Pain Analysis Cards
-                    PainAnalysisCard(catName: "noodle", date: "9 Oct 2025, 12:18")
-                        .padding(.horizontal, 20)
-                    
-                    PainAnalysisCard(catName: "boba", date: "8 Oct 2025, 19:18")
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 100) // Space for bottom nav
+                    // Main Content
+                    VStack(spacing: 20) {
+                        // Section Title
+                        SectionHeaderView(title: "Latest Pain Analysis", action: "See All")
+                            .padding(.horizontal, 20)
+                            .padding(.top, 20)
+                        
+                        // Action Buttons
+                        ActionButtonsView(showAnalyzeCat: $showAnalyzeCat)
+                            .padding(.horizontal, 20)
+                        
+                        // Pain Analysis Cards
+                        PainAnalysisCard(catName: "noodle", date: "9 Oct 2025, 12:18")
+                            .padding(.horizontal, 20)
+                        
+                        PainAnalysisCard(catName: "boba", date: "8 Oct 2025, 19:18")
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 100) // Space for bottom nav
+                    }
                 }
             }
-        }
-        .background(Color.appBackground)
-        .safeAreaInset(edge: .bottom) {
-            BottomNavigationView()
+            .background(Color.appBackground)
+            .safeAreaInset(edge: .bottom) {
+                BottomNavigationView()
+            }
+            .navigationDestination(isPresented: $showAnalyzeCat) {
+                AnalyzeCatView()
+            }
         }
     }
 }
@@ -161,12 +168,30 @@ struct SectionHeaderView: View {
     }
 }
 
+// MARK: - Pressable Button Style
+struct PressableButtonStyle: ButtonStyle {
+    var backgroundColor: Color
+    var pressedColor: Color
+    
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(configuration.isPressed ? pressedColor : backgroundColor)
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.borderColor.opacity(0.50), lineWidth: 1)
+            )
+    }
+}
+
 // MARK: - Action Buttons
 struct ActionButtonsView: View {
+    @Binding var showAnalyzeCat: Bool
+    
     var body: some View {
         HStack(spacing: 9) {
             // Analyze Cat Button
-            Button(action: {}) {
+            Button(action: { showAnalyzeCat = true }) {
                 VStack(spacing: 10) {
                     Image(systemName: "camera.fill")
                         .font(.system(size: 24))
@@ -179,13 +204,11 @@ struct ActionButtonsView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 110)
-                .background(Color.buttonPrimary)
-                .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.borderColor.opacity(0.50), lineWidth: 1)
-                )
             }
+            .buttonStyle(PressableButtonStyle(
+                backgroundColor: Color.buttonPrimary,
+                pressedColor: Color.buttonPrimary.opacity(0.7)
+            ))
             
             // Past Records Button
             Button(action: {}) {
@@ -310,13 +333,14 @@ struct NavButton: View {
     let icon: String
     let isSelected: Bool
     var size: CGFloat = 24
+    var highlightColor: Color = Color.textPrimary
     
     var body: some View {
         Button(action: {}) {
             if isSelected {
                 ZStack {
                     Circle()
-                        .fill(Color.textPrimary)
+                        .fill(highlightColor)
                         .frame(width: 56, height: 56)
                     
                     Image(systemName: icon)

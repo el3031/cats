@@ -1,4 +1,5 @@
 import os
+from sympy import Q
 import torch
 import json
 import numpy as np
@@ -24,18 +25,13 @@ def visualize_landmarks(image_path, landmarks, save_path=None):
     # Plot landmarks
     ax.scatter(landmarks[:, 0], landmarks[:, 1], c='red', s=50, marker='o', edgecolors='white', linewidths=1)
     
-    # Connect key points (optional - customize based on landmark structure)
-    # Connect eyes, nose, mouth, etc.
-    
     plt.tight_layout()
     
     if save_path:
         plt.savefig(save_path, bbox_inches='tight', dpi=150)
         print(f"Saved visualization to {save_path}")
-    else:
-        plt.show()
-    
-    plt.close()
+    return plt
+
 
 
 def predict_landmarks(model, image_path, device, img_size=(224, 224), save_vis=False):
@@ -79,11 +75,10 @@ def predict_landmarks(model, image_path, device, img_size=(224, 224), save_vis=F
     landmarks[:, 1] *= original_size[1]  # y coordinates
     
     # Visualize if requested
-    if save_vis:
-        vis_path = image_path.replace('.png', '_landmarks.png').replace('.jpg', '_landmarks.jpg')
-        visualize_landmarks(image_path, landmarks, vis_path)
+    vis_path = image_path.replace('.png', '_landmarks.png').replace('.jpg', '_landmarks.jpg') if save_vis else None
+    plt = visualize_landmarks(image_path, landmarks, vis_path)
     
-    return landmarks, landmarks_normalized
+    return landmarks, landmarks_normalized, plt
 
 
 def evaluate_model(model, test_data_dir, device, num_samples=10):

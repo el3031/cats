@@ -6,6 +6,7 @@ struct ImagePreviewView: View {
     let capturedImage: UIImage
     @Environment(\.dismiss) var dismiss
     @State private var showCamera = false
+    @State private var showProcessing = false
     
     var body: some View {
         ScrollView {
@@ -27,7 +28,7 @@ struct ImagePreviewView: View {
                     // Action Buttons
                     ImagePreviewActionButtonsView(
                         onContinue: {
-                            // Navigate to analysis screen
+                            showProcessing = true
                         },
                         onRetake: {
                             dismiss()
@@ -43,6 +44,9 @@ struct ImagePreviewView: View {
             ImagePreviewBottomNavigationView()
         }
         .navigationBarBackButtonHidden(true)
+        .navigationDestination(isPresented: $showProcessing) {
+            ProcessingView(catName: catName, capturedImage: capturedImage)
+        }
     }
 }
 

@@ -9,6 +9,7 @@ struct CameraView: View {
     @StateObject private var cameraManager = CameraManager()
     @State private var showInstructions = true
     @State private var showImagePreview = false
+    @State private var showImagePicker = false
     
     var body: some View {
         ZStack {
@@ -56,7 +57,8 @@ struct CameraView: View {
                 
                 CameraControlsView(
                     cameraManager: cameraManager,
-                    showInstructions: $showInstructions
+                    showInstructions: $showInstructions,
+                    showImagePicker: $showImagePicker
                 )
                 .padding(.bottom, 34) // Space for home indicator
             }
@@ -66,18 +68,35 @@ struct CameraView: View {
         }
         .onAppear {
             // Restart camera session when view appears (e.g., when navigating back)
-            if !cameraManager.isSessionRunning && cameraManager.session.inputs.count > 0 {
+            print("CameraView onAppear - isSessionRunning: \(cameraManager.isSessionRunning), session.isRunning: \(cameraManager.session.isRunning)")
+            if !cameraManager.session.isRunning && cameraManager.session.inputs.count > 0 {
                 print("View appeared, restarting camera session")
                 cameraManager.restartSession()
+            } else if cameraManager.session.isRunning && !cameraManager.isSessionRunning {
+                // Session is running but flag is wrong - fix it
+                print("Fixing isSessionRunning flag")
+                cameraManager.isSessionRunning = true
             }
             // Reset navigation state
             cameraManager.shouldNavigateToPreview = false
+            cameraManager.capturedImage = nil
         }
         .navigationBarBackButtonHidden(true)
         .navigationDestination(isPresented: $showImagePreview) {
             if let image = cameraManager.capturedImage {
                 ImagePreviewView(catName: catName, capturedImage: image)
             }
+        }
+        .sheet(isPresented: $showImagePicker) {
+            ImagePicker(selectedImage: Binding(
+                get: { cameraManager.capturedImage },
+                set: { newImage in
+                    if let newImage = newImage {
+                        cameraManager.capturedImage = newImage
+                        showImagePreview = true
+                    }
+                }
+            ))
         }
         .alert("Camera Permission", isPresented: $cameraManager.alert) {
             Button("Settings") {
@@ -226,7 +245,7 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
                     print("capturePhoto called")
                     
                     // Don't stop session immediately - wait for photo to be captured
-                    // self.session.stopRunning()
+                    // We'll stop it after the photo is processed
                     
                     DispatchQueue.main.async {
                         self.isSessionRunning = false
@@ -261,15 +280,28 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
     
     func restartSession() {
         sessionQueue.async {
+            print("restartSession() called - session.isRunning: \(self.session.isRunning)")
             if !self.session.isRunning {
-                print("Restarting camera session")
+                print("Starting camera session...")
                 self.session.startRunning()
+                
+                // Wait a bit for session to actually start
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    let isActuallyRunning = self.session.isRunning
+                    print("Session start attempted, actually running: \(isActuallyRunning)")
+                    self.isSessionRunning = isActuallyRunning
+                    self.isTaken = false
+                    self.capturedImage = nil
+                    self.shouldNavigateToPreview = false
+                    print("Session restarted, isSessionRunning set to: \(self.isSessionRunning)")
+                }
+            } else {
+                print("Session already running, just updating flag")
                 DispatchQueue.main.async {
                     self.isSessionRunning = true
                     self.isTaken = false
                     self.capturedImage = nil
                     self.shouldNavigateToPreview = false
-                    print("Session restarted, isSessionRunning: \(self.isSessionRunning)")
                 }
             }
         }
@@ -443,12 +475,13 @@ struct FramingGuideOverlay: View {
 struct CameraControlsView: View {
     @ObservedObject var cameraManager: CameraManager
     @Binding var showInstructions: Bool
+    @Binding var showImagePicker: Bool
     
     var body: some View {
         HStack(spacing: 0) {
             // Gallery Thumbnail
             Button(action: {
-                // Open photo gallery
+                showImagePicker = true
             }) {
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color.gray.opacity(0.3))
@@ -504,6 +537,45 @@ struct CameraControlsView: View {
             .padding(.trailing, 30)
         }
         .padding(.bottom, 20)
+    }
+}
+
+// MARK: - Image Picker
+struct ImagePicker: UIViewControllerRepresentable {
+    @Binding var selectedImage: UIImage?
+    @Environment(\.dismiss) var dismiss
+    
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.delegate = context.coordinator
+        picker.sourceType = .photoLibrary
+        picker.allowsEditing = false
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: ImagePicker
+        
+        init(_ parent: ImagePicker) {
+            self.parent = parent
+        }
+        
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            if let image = info[.originalImage] as? UIImage {
+                parent.selectedImage = image
+            }
+            parent.dismiss()
+        }
+        
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
+        }
     }
 }
 

@@ -116,8 +116,8 @@ def calculate_pain_score(image_path, model_path='checkpoints/best_model.pth', nu
 
 
 
-# calculate_pain_score("/Users/elaine01px2019/Downloads/CatFLW dataset/images/noonoo.jpg")
+calculate_pain_score("/Users/elaine01px2019/Downloads/CatFLW dataset/images/noonoo.jpg")
 # calculate_pain_score("/Users/elaine01px2019/Downloads/CatFLW dataset/images/pain.jpg")
-calculate_pain_score("/Users/elaine01px2019/Downloads/CatFLW dataset/images/fine.jpg")
+calculate_pain_score("/Users/elaine01px2019/Downloads/CatFLW dataset/images/piggy.jpeg")
 
 # calculate_pain_score("/Users/elaine01px2019/Downloads/CatFLW dataset/images/CAT_01_00000142_006.png")

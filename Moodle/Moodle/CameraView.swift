@@ -8,6 +8,7 @@ struct CameraView: View {
     @Environment(\.dismiss) var dismiss
     @StateObject private var cameraManager = CameraManager()
     @State private var showInstructions = true
+    @State private var showImagePreview = false
     
     var body: some View {
         ZStack {
@@ -60,8 +61,23 @@ struct CameraView: View {
                 .padding(.bottom, 34) // Space for home indicator
             }
         }
-        .onAppear {
+        .task {
             cameraManager.checkPermission()
+        }
+        .onAppear {
+            // Restart camera session when view appears (e.g., when navigating back)
+            if !cameraManager.isSessionRunning && cameraManager.session.inputs.count > 0 {
+                print("View appeared, restarting camera session")
+                cameraManager.restartSession()
+            }
+            // Reset navigation state
+            cameraManager.shouldNavigateToPreview = false
+        }
+        .navigationBarBackButtonHidden(true)
+        .navigationDestination(isPresented: $showImagePreview) {
+            if let image = cameraManager.capturedImage {
+                ImagePreviewView(catName: catName, capturedImage: image)
+            }
         }
         .alert("Camera Permission", isPresented: $cameraManager.alert) {
             Button("Settings") {
@@ -73,6 +89,28 @@ struct CameraView: View {
         } message: {
             Text("Please allow camera access in Settings to take photos of your cat.")
         }
+        .onChange(of: cameraManager.shouldNavigateToPreview) { oldValue, newValue in
+            if newValue && cameraManager.capturedImage != nil {
+                print("Navigating to image preview")
+                DispatchQueue.main.async {
+                    showImagePreview = true
+                    // Reset flag after a delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        cameraManager.shouldNavigateToPreview = false
+                    }
+                }
+            }
+        }
+        .onChange(of: cameraManager.capturedImage) { oldValue, newValue in
+            if newValue != nil && oldValue == nil && !showImagePreview {
+                print("Image captured, triggering navigation via image change")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    if cameraManager.capturedImage != nil {
+                        showImagePreview = true
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -81,9 +119,13 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
     @Published var session = AVCaptureSession()
     @Published var alert = false
     @Published var output = AVCapturePhotoOutput()
-    @Published var preview: AVCaptureVideoPreviewLayer!
+    var preview: AVCaptureVideoPreviewLayer?
     @Published var isTaken = false
     @Published var capturedImage: UIImage?
+    @Published var isSessionRunning = false
+    @Published var shouldNavigateToPreview = false
+    
+    private let sessionQueue = DispatchQueue(label: "camera.session.queue")
     
     func checkPermission() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -92,74 +134,173 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { status in
                 if status {
-                    DispatchQueue.main.async {
-                        self.setUp()
-                    }
+                    self.setUp()
                 }
             }
         case .denied, .restricted:
-            alert = true
+            DispatchQueue.main.async {
+                self.alert = true
+            }
         @unknown default:
             break
         }
     }
     
     func setUp() {
-        do {
-            session.beginConfiguration()
-            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-                return
+        sessionQueue.async {
+            do {
+                self.session.beginConfiguration()
+                guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+                    return
+                }
+                
+                let input = try AVCaptureDeviceInput(device: device)
+                
+                // Remove existing inputs
+                for existingInput in self.session.inputs {
+                    self.session.removeInput(existingInput)
+                }
+                
+                if self.session.canAddInput(input) {
+                    self.session.addInput(input)
+                }
+                
+                // Remove existing outputs
+                for existingOutput in self.session.outputs {
+                    self.session.removeOutput(existingOutput)
+                }
+                
+                if self.session.canAddOutput(self.output) {
+                    self.session.addOutput(self.output)
+                }
+                
+                self.session.commitConfiguration()
+                
+                // Start session on background queue
+                self.sessionQueue.async {
+                    if !self.session.isRunning {
+                        self.session.startRunning()
+                        print("Camera session started: \(self.session.isRunning)")
+                        DispatchQueue.main.async {
+                            self.isSessionRunning = true
+                        }
+                    }
+                }
+            } catch {
+                print("Camera setup error: \(error.localizedDescription)")
             }
-            
-            let input = try AVCaptureDeviceInput(device: device)
-            
-            if session.canAddInput(input) {
-                session.addInput(input)
-            }
-            
-            if session.canAddOutput(output) {
-                session.addOutput(output)
-            }
-            
-            session.commitConfiguration()
-        } catch {
-            print(error.localizedDescription)
         }
     }
     
     func takePic() {
-        DispatchQueue.global(qos: .background).async {
-            self.output.capturePhoto(with: AVCapturePhotoSettings(), delegate: self)
-            self.session.stopRunning()
+        print("takePic() called")
+        sessionQueue.async {
+            print("takePic() - on session queue")
+            print("Session isRunning: \(self.session.isRunning)")
+            print("Output connections count: \(self.output.connections.count)")
             
-            DispatchQueue.main.async {
-                withAnimation {
-                    self.isTaken = true
+            guard self.session.isRunning else {
+                print("ERROR: Session is not running")
+                return
+            }
+            
+            guard !self.output.connections.isEmpty else {
+                print("ERROR: No connections available")
+                return
+            }
+            
+            // Create photo settings with proper format
+            var settings: AVCapturePhotoSettings
+            if self.output.availablePhotoCodecTypes.contains(.hevc) {
+                settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
+            } else {
+                settings = AVCapturePhotoSettings()
+            }
+            
+            // Ensure we have a valid connection
+            if let connection = self.output.connection(with: .video) {
+                print("Video connection found, isActive: \(connection.isActive)")
+                if connection.isActive {
+                    print("Capturing photo...")
+                    self.output.capturePhoto(with: settings, delegate: self)
+                    print("capturePhoto called")
+                    
+                    // Don't stop session immediately - wait for photo to be captured
+                    // self.session.stopRunning()
+                    
+                    DispatchQueue.main.async {
+                        self.isSessionRunning = false
+                        withAnimation {
+                            self.isTaken = true
+                        }
+                    }
+                } else {
+                    print("ERROR: Connection is not active")
                 }
+            } else {
+                print("ERROR: No video connection available")
             }
         }
     }
     
     func retake() {
-        DispatchQueue.global(qos: .background).async {
-            self.session.startRunning()
-            
-            DispatchQueue.main.async {
-                withAnimation {
+        sessionQueue.async {
+            if !self.session.isRunning {
+                self.session.startRunning()
+                DispatchQueue.main.async {
+                    self.isSessionRunning = true
+                    withAnimation {
+                        self.isTaken = false
+                        self.capturedImage = nil
+                        self.shouldNavigateToPreview = false
+                    }
+                }
+            }
+        }
+    }
+    
+    func restartSession() {
+        sessionQueue.async {
+            if !self.session.isRunning {
+                print("Restarting camera session")
+                self.session.startRunning()
+                DispatchQueue.main.async {
+                    self.isSessionRunning = true
                     self.isTaken = false
                     self.capturedImage = nil
+                    self.shouldNavigateToPreview = false
+                    print("Session restarted, isSessionRunning: \(self.isSessionRunning)")
                 }
             }
         }
     }
     
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        if error != nil {
+        print("photoOutput delegate called")
+        if let error = error {
+            print("Photo capture error: \(error.localizedDescription)")
             return
         }
         
-        guard let imageData = photo.fileDataRepresentation() else { return }
-        capturedImage = UIImage(data: imageData)
+        print("Photo captured successfully")
+        guard let imageData = photo.fileDataRepresentation() else {
+            print("ERROR: No image data available")
+            return
+        }
+        
+        print("Image data size: \(imageData.count) bytes")
+        guard let image = UIImage(data: imageData) else {
+            print("ERROR: Could not create UIImage from data")
+            return
+        }
+        
+        print("UIImage created successfully, size: \(image.size)")
+        DispatchQueue.main.async {
+            print("Setting captured image on main thread")
+            self.capturedImage = image
+            self.shouldNavigateToPreview = true
+            print("shouldNavigateToPreview set to true, capturedImage is set: \(self.capturedImage != nil)")
+        }
     }
 }
 
@@ -168,23 +309,40 @@ struct CameraPreview: UIViewRepresentable {
     @ObservedObject var cameraManager: CameraManager
     
     func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: UIScreen.main.bounds)
+        let view = UIView()
+        view.backgroundColor = .black
         
-        cameraManager.preview = AVCaptureVideoPreviewLayer(session: cameraManager.session)
-        cameraManager.preview.frame = view.frame
-        cameraManager.preview.videoGravity = .resizeAspectFill
-        view.layer.addSublayer(cameraManager.preview)
+        let previewLayer = AVCaptureVideoPreviewLayer(session: cameraManager.session)
+        previewLayer.videoGravity = .resizeAspectFill
+        view.layer.addSublayer(previewLayer)
         
-        DispatchQueue.global(qos: .background).async {
-            cameraManager.session.startRunning()
+        // Store reference
+        cameraManager.preview = previewLayer
+        
+        // Set initial frame
+        DispatchQueue.main.async {
+            previewLayer.frame = view.bounds
         }
         
         return view
     }
     
     func updateUIView(_ uiView: UIView, context: Context) {
-        if let preview = cameraManager.preview {
-            preview.frame = uiView.frame
+        guard let preview = cameraManager.preview else { return }
+        
+        // Update frame whenever view updates - must be on main thread
+        if Thread.isMainThread {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            preview.frame = uiView.bounds
+            CATransaction.commit()
+        } else {
+            DispatchQueue.main.async {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                preview.frame = uiView.bounds
+                CATransaction.commit()
+            }
         }
     }
 }
@@ -223,45 +381,59 @@ struct FramingGuideOverlay: View {
     var body: some View {
         GeometryReader { geometry in
             let centerX = geometry.size.width / 2
-            let centerY = geometry.size.height / 2
+            let centerY = geometry.size.height / 2 + 60  // Moved down by 40 points
             let size: CGFloat = 200
+            let cornerRadius: CGFloat = 15
+            let cornerLength: CGFloat = 30
             
             ZStack {
-                // Top-left corner
+                // Top-left curved corner
                 Path { path in
-                    path.move(to: CGPoint(x: centerX - size/2, y: centerY - size/2))
-                    path.addLine(to: CGPoint(x: centerX - size/2 + 30, y: centerY - size/2))
-                    path.move(to: CGPoint(x: centerX - size/2, y: centerY - size/2))
-                    path.addLine(to: CGPoint(x: centerX - size/2, y: centerY - size/2 + 30))
+                    let startX = centerX - size/2
+                    let startY = centerY - size/2
+                    path.move(to: CGPoint(x: startX + cornerLength, y: startY))
+                    path.addQuadCurve(
+                        to: CGPoint(x: startX, y: startY + cornerLength),
+                        control: CGPoint(x: startX, y: startY)
+                    )
                 }
-                .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 
-                // Top-right corner
+                // Top-right curved corner
                 Path { path in
-                    path.move(to: CGPoint(x: centerX + size/2, y: centerY - size/2))
-                    path.addLine(to: CGPoint(x: centerX + size/2 - 30, y: centerY - size/2))
-                    path.move(to: CGPoint(x: centerX + size/2, y: centerY - size/2))
-                    path.addLine(to: CGPoint(x: centerX + size/2, y: centerY - size/2 + 30))
+                    let startX = centerX + size/2
+                    let startY = centerY - size/2
+                    path.move(to: CGPoint(x: startX - cornerLength, y: startY))
+                    path.addQuadCurve(
+                        to: CGPoint(x: startX, y: startY + cornerLength),
+                        control: CGPoint(x: startX, y: startY)
+                    )
                 }
-                .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 
-                // Bottom-left corner
+                // Bottom-left curved corner
                 Path { path in
-                    path.move(to: CGPoint(x: centerX - size/2, y: centerY + size/2))
-                    path.addLine(to: CGPoint(x: centerX - size/2 + 30, y: centerY + size/2))
-                    path.move(to: CGPoint(x: centerX - size/2, y: centerY + size/2))
-                    path.addLine(to: CGPoint(x: centerX - size/2, y: centerY + size/2 - 30))
+                    let startX = centerX - size/2
+                    let startY = centerY + size/2
+                    path.move(to: CGPoint(x: startX + cornerLength, y: startY))
+                    path.addQuadCurve(
+                        to: CGPoint(x: startX, y: startY - cornerLength),
+                        control: CGPoint(x: startX, y: startY)
+                    )
                 }
-                .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 
-                // Bottom-right corner
+                // Bottom-right curved corner
                 Path { path in
-                    path.move(to: CGPoint(x: centerX + size/2, y: centerY + size/2))
-                    path.addLine(to: CGPoint(x: centerX + size/2 - 30, y: centerY + size/2))
-                    path.move(to: CGPoint(x: centerX + size/2, y: centerY + size/2))
-                    path.addLine(to: CGPoint(x: centerX + size/2, y: centerY + size/2 - 30))
+                    let startX = centerX + size/2
+                    let startY = centerY + size/2
+                    path.move(to: CGPoint(x: startX - cornerLength, y: startY))
+                    path.addQuadCurve(
+                        to: CGPoint(x: startX, y: startY - cornerLength),
+                        control: CGPoint(x: startX, y: startY)
+                    )
                 }
-                .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
             }
         }
     }
@@ -293,7 +465,14 @@ struct CameraControlsView: View {
             
             // Shutter Button
             Button(action: {
-                cameraManager.takePic()
+                print("Shutter button pressed")
+                print("isSessionRunning: \(cameraManager.isSessionRunning)")
+                if cameraManager.isSessionRunning {
+                    print("Calling takePic()")
+                    cameraManager.takePic()
+                } else {
+                    print("ERROR: Session not running, cannot take photo")
+                }
             }) {
                 ZStack {
                     Circle()
@@ -309,6 +488,8 @@ struct CameraControlsView: View {
                         .foregroundColor(.black)
                 }
             }
+            .disabled(!cameraManager.isSessionRunning)
+            .opacity(cameraManager.isSessionRunning ? 1.0 : 0.5)
             
             Spacer()
             

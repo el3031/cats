@@ -9,6 +9,7 @@ struct ProcessingView: View {
     @Environment(\.dismiss) var dismiss
     @StateObject private var processingManager = ProcessingManager()
     @State private var showResults = false
+    @State private var showImageRejected = false
     @State private var resultsLandmarks: [(x: Double, y: Double)] = []
     @State private var resultsPainScores: (eye: Int, ear: Int, muzzle: Int) = (0, 0, 0)
     @State private var orientedImage: UIImage?
@@ -56,8 +57,39 @@ struct ProcessingView: View {
             
             processingManager.startProcessing(image: fixedImage) { landmarks, scores in
                 resultsLandmarks = landmarks
-                resultsPainScores = scores
-                showResults = true
+                
+                // Check if any score is -1 (error)
+                if scores.eye == -1 || scores.ear == -1 || scores.muzzle == -1 {
+                    // Show image rejected popup instead of navigating to results
+                    showImageRejected = true
+                } else {
+                    // All scores are valid, clamp to valid range and navigate to results
+                    resultsPainScores = (
+                        eye: max(0, min(2, scores.eye)),
+                        ear: max(0, min(2, scores.ear)),
+                        muzzle: max(0, min(2, scores.muzzle))
+                    )
+                    showResults = true
+                }
+            }
+        }
+        .overlay {
+            // Image Rejected Popup
+            if showImageRejected {
+                ImageRejectedView(onRetake: {
+                    // Pop back to AnalyzeCatView by dismissing multiple times
+                    // Navigation stack: AnalyzeCatView -> CameraView -> ImagePreviewView -> ProcessingView
+                    // We need to pop 3 times to get back to AnalyzeCatView
+                    dismiss() // Pop ImagePreviewView
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        dismiss() // Pop CameraView
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            dismiss() // Pop ProcessingView, leaving us at AnalyzeCatView
+                        }
+                    }
+                })
+                .transition(.opacity)
+                .zIndex(1000)
             }
         }
     }
@@ -255,20 +287,14 @@ class ProcessingManager: ObservableObject {
         print("   Ear score: \(scores.ear) (-1=error, 0=normal, 1=mild, 2=moderate/severe)")
         print("   Muzzle score: \(scores.muzzle) (-1=error, 0=normal, 1=mild, 2=moderate/severe)")
         
-        // Check for errors and clamp scores to valid range (0-2)
-        let clampedScores = (
-            eye: max(0, scores.eye),
-            ear: max(0, scores.ear),
-            muzzle: max(0, scores.muzzle)
-        )
-        
         if scores.eye == -1 || scores.ear == -1 || scores.muzzle == -1 {
-            print("⚠️  WARNING: One or more scores indicate an error in landmark detection, using clamped values")
+            print("⚠️  WARNING: One or more scores indicate an error in landmark detection")
         }
         
-        // Call completion handler with results
+        // Call completion handler with original scores (not clamped)
+        // The ProcessingView will check for -1 and show the rejection popup
         DispatchQueue.main.async {
-            self.completionHandler?(landmarks, clampedScores)
+            self.completionHandler?(landmarks, scores)
         }
     }
 }
@@ -297,6 +323,80 @@ struct ProcessingBottomNavigationView: View {
         }
         .background(Color.appBackground)
         .shadow(color: Color.borderColor, radius: 0)
+    }
+}
+
+// MARK: - Image Rejected View
+struct ImageRejectedView: View {
+    let onRetake: () -> Void
+    
+    var body: some View {
+        ZStack {
+            // Semi-transparent background
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+            
+            // Popup Card
+            VStack(spacing: 0) {
+                Spacer()
+                
+                VStack(spacing: 24) {
+                    // Header
+                    VStack(spacing: 8) {
+                        HStack(spacing: 4) {
+                            Text("Image")
+                                .font(.poppins(.bold, size: 28))
+                                .foregroundColor(.textPrimary)
+                            
+                            Text("Rejected")
+                                .font(.poppins(.bold, size: 28))
+                                .foregroundColor(Color(red: 0.95, green: 0.55, blue: 0.45)) // Coral
+                        }
+                        
+                        // Explanation text
+                        Text("We couldn't detect your cat's face clearly. Please take another photo.")
+                            .font(.poppins(.regular, size: 14))
+                            .foregroundColor(.textPrimary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
+                    }
+                    
+                    // Requirements Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Does your photo meet the following requirements?")
+                            .font(.poppins(.semiBold, size: 14))
+                            .foregroundColor(.textPrimary)
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            InstructionBullet(text: "Shows one cat only (no other cats in frame)")
+                            InstructionBullet(text: "Shows the whole face")
+                            InstructionBullet(text: "Has good lighting")
+                            InstructionBullet(text: "Shows the cat in the center of the screen")
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    
+                    // Retake Photo Button
+                    Button(action: onRetake) {
+                        Text("Retake Photo")
+                            .font(.poppins(.semiBold, size: 16))
+                            .foregroundColor(.textPrimary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color.gray.opacity(0.2))
+                            .cornerRadius(12)
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .padding(.vertical, 32)
+                .background(Color.white)
+                .cornerRadius(20)
+                .padding(.horizontal, 20)
+                
+                Spacer()
+            }
+        }
     }
 }
 

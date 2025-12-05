@@ -5,14 +5,28 @@ struct AnalyzeCatView: View {
     @Environment(\.dismiss) var dismiss
     @State private var showCamera = false
     @State private var selectedCatName = ""
+    @State private var uniqueCats: [Cat] = []
+    @State private var showComingSoonPopup = false
+    
+    private let columns = [
+        GridItem(.flexible(), spacing: 16),
+        GridItem(.flexible(), spacing: 16)
+    ]
+    
+    private var cardWidth: CGFloat {
+        let screenWidth = UIScreen.main.bounds.width
+        let horizontalPadding: CGFloat = 20 * 2 // Left and right padding
+        let spacing: CGFloat = 16 // Spacing between columns
+        return (screenWidth - horizontalPadding - spacing) / 2
+    }
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                // Header Section
-                AnalyzeCatHeaderView()
-                
-                // Main Content
+        VStack(spacing: 0) {
+            // Header Section (outside ScrollView so background extends to top)
+            AnalyzeCatHeaderView()
+            
+            // Scrollable Content
+            ScrollView {
                 VStack(spacing: 20) {
                     // Warning Box
                     WarningBoxView()
@@ -20,33 +34,90 @@ struct AnalyzeCatView: View {
                         .padding(.top, 20)
                     
                     // Cat Selection Cards
-                    VStack(spacing: 16) {
-                        HStack(spacing: 16) {
-                            AnalyzeCatCard(name: "noodle") {
-                                selectedCatName = "noodle"
-                                showCamera = true
-                            }
-                            AnalyzeCatCard(name: "boba") {
-                                selectedCatName = "boba"
+                    LazyVGrid(columns: columns, spacing: 16) {
+                        ForEach(uniqueCats) { cat in
+                            AnalyzeCatCard(name: cat.name, cardWidth: cardWidth) {
+                                selectedCatName = cat.name
                                 showCamera = true
                             }
                         }
                         
-                        AddCatButtonCard()
+                        AddCatButtonCard(cardWidth: cardWidth)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 20)
                     .padding(.bottom, 100) // Space for bottom nav
                 }
             }
+            .background(Color.appBackground)
         }
-        .background(Color.appBackground)
         .safeAreaInset(edge: .bottom) {
-            AnalyzeCatBottomNavigationView()
+            AnalyzeCatBottomNavigationView(onProfileTap: {
+                showComingSoonPopup = true
+            })
         }
         .navigationBarBackButtonHidden(true)
         .navigationDestination(isPresented: $showCamera) {
             CameraView(catName: selectedCatName)
+        }
+        .onAppear {
+            loadUniqueCats()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToHome"))) { _ in
+            // Dismiss when navigating to home
+            showCamera = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                dismiss()
+            }
+        }
+        .overlay {
+            if showComingSoonPopup {
+                ComingSoonPopupView(onClose: {
+                    showComingSoonPopup = false
+                })
+                .transition(.opacity)
+                .zIndex(1000)
+            }
+        }
+    }
+    
+    private func loadUniqueCats() {
+        guard let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            print("❌ ERROR: Could not access documents directory")
+            return
+        }
+        
+        let fileURL = documentsDirectory.appendingPathComponent("pain_analysis_entries.json")
+        
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            print("ℹ️  No pain analysis entries file found for loading cats")
+            uniqueCats = []
+            return
+        }
+        
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let jsonArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] ?? []
+            
+            // Create a set of unique cat names
+            var uniqueCatNames = Set<String>()
+            for jsonDict in jsonArray {
+                if let catName = jsonDict["catName"] as? String {
+                    uniqueCatNames.insert(catName)
+                }
+            }
+            
+            // For each unique cat, create a Cat object
+            var cats: [Cat] = []
+            for catName in uniqueCatNames.sorted() {
+                cats.append(Cat(name: catName, imagePath: nil))
+            }
+            
+            uniqueCats = cats
+            print("✅ Loaded \(uniqueCats.count) unique cats for AnalyzeCatView")
+        } catch {
+            print("❌ ERROR: Failed to load unique cats: \(error.localizedDescription)")
+            uniqueCats = []
         }
     }
 }
@@ -57,7 +128,6 @@ struct AnalyzeCatHeaderView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Back button and title
             HStack {
                 Button(action: { dismiss() }) {
                     Image(systemName: "chevron.left")
@@ -67,26 +137,25 @@ struct AnalyzeCatHeaderView: View {
                 }
                 
                 Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            
-            // Title section
-            VStack(alignment: .leading, spacing: 4) {
+                
                 Text("Analyze Cat")
                     .font(.poppins(.bold, size: 28))
                     .foregroundColor(.textLight)
                 
-                Text("Select Cat")
-                    .font(.poppins(.regular, size: 16))
-                    .foregroundColor(.textLight)
+                Spacer()
+                
+                // Invisible spacer to balance the back button
+                Color.clear
+                    .frame(width: 40, height: 40)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 20)
         }
-        .background(Color.headerBackground)
+        .background(
+            Color.headerBackground
+                .ignoresSafeArea(edges: .top)
+        )
     }
 }
 
@@ -149,26 +218,25 @@ struct InstructionBullet: View {
 // MARK: - Analyze Cat Card
 struct AnalyzeCatCard: View {
     let name: String
+    let cardWidth: CGFloat
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
             VStack(spacing: 12) {
-                // Profile Picture
-                Circle()
-                    .fill(Color.catImageBackground)
-                    .frame(width: 100, height: 100)
+                // Profile Picture - using CatImageCircle from ContentView
+                CatImageCircle(imagePath: nil, size: 120, catName: name)
                     .overlay(
                         Circle()
                             .stroke(Color.textLight.opacity(0.3), lineWidth: 1)
                     )
                 
                 // Name
-                Text(name)
+                Text(name.capitalized)
                     .font(.poppins(.semiBold, size: 18))
                     .foregroundColor(.textLight)
             }
-            .frame(maxWidth: .infinity)
+            .frame(width: cardWidth, height: cardWidth) // Make it square
             .padding(.vertical, 20)
             .background(Color.headerBackground)
             .cornerRadius(12)
@@ -178,6 +246,8 @@ struct AnalyzeCatCard: View {
 
 // MARK: - Add Cat Button Card
 struct AddCatButtonCard: View {
+    let cardWidth: CGFloat
+    
     var body: some View {
         Button(action: {}) {
             VStack(spacing: 12) {
@@ -185,7 +255,7 @@ struct AddCatButtonCard: View {
                 ZStack {
                     Circle()
                         .fill(Color.gray.opacity(0.1))
-                        .frame(width: 100, height: 100)
+                        .frame(width: 80, height: 80)
                     
                     Image(systemName: "plus")
                         .font(.system(size: 40, weight: .light))
@@ -197,7 +267,7 @@ struct AddCatButtonCard: View {
                     .font(.poppins(.medium, size: 16))
                     .foregroundColor(.textPrimary)
             }
-            .frame(maxWidth: .infinity)
+            .frame(width: cardWidth, height: cardWidth) // Make it square
             .padding(.vertical, 20)
             .background(Color.appBackground)
             .cornerRadius(12)
@@ -211,22 +281,25 @@ struct AddCatButtonCard: View {
 
 // MARK: - Analyze Cat Bottom Navigation
 struct AnalyzeCatBottomNavigationView: View {
+    let onProfileTap: () -> Void
+    
     var body: some View {
         VStack(spacing: 0) {
-            // Divider
-            Rectangle()
-                .fill(Color.black)
-                .frame(width: 134, height: 5)
-                .cornerRadius(100)
-                .padding(.top, 8)
-            
             // Navigation Items
             HStack {
-                NavButton(icon: "house", isSelected: false)
-                NavButton(icon: "magnifyingglass", isSelected: false)
-                NavButton(icon: "square.on.square", isSelected: true, size: 24, highlightColor: .purple)
-                NavButton(icon: "calendar", isSelected: false)
-                NavButton(icon: "person", isSelected: false)
+                NavButtonWithCustomIcon(isSelected: false, action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("NavigateToHome"), object: nil)
+                })
+                NavButtonWithCustomSearchIconOutline(isSelected: false, action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("NavigateToSearch"), object: nil)
+                })
+                NavButtonWithCustomCameraIcon(isSelected: true, action: {
+                    // Already on AnalyzeCatView, do nothing
+                })
+                NavButtonWithCustomCalendarIcon(isSelected: false, action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("NavigateToCalendar"), object: nil)
+                })
+                NavButtonWithCustomProfileIcon(action: onProfileTap)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)

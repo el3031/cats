@@ -87,6 +87,13 @@ struct CameraView: View {
                 ImagePreviewView(catName: catName, capturedImage: image)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToHome"))) { _ in
+            // Dismiss when navigating to home
+            showImagePreview = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                dismiss()
+            }
+        }
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(selectedImage: Binding(
                 get: { cameraManager.capturedImage },
@@ -145,6 +152,7 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
     @Published var shouldNavigateToPreview = false
     
     private let sessionQueue = DispatchQueue(label: "camera.session.queue")
+    private var captureDevice: AVCaptureDevice?
     
     func checkPermission() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -172,6 +180,8 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
                 guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
                     return
                 }
+                
+                self.captureDevice = device
                 
                 let input = try AVCaptureDeviceInput(device: device)
                 
@@ -234,6 +244,11 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
                 settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
             } else {
                 settings = AVCapturePhotoSettings()
+            }
+            
+            // Set flash mode
+            if let device = self.captureDevice, device.hasFlash {
+                settings.flashMode = device.flashMode
             }
             
             // Ensure we have a valid connection
@@ -332,6 +347,22 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
             self.capturedImage = image
             self.shouldNavigateToPreview = true
             print("shouldNavigateToPreview set to true, capturedImage is set: \(self.capturedImage != nil)")
+        }
+    }
+    
+    func setFlashMode(_ mode: AVCaptureDevice.FlashMode) {
+        sessionQueue.async {
+            guard let device = self.captureDevice else { return }
+            
+            do {
+                try device.lockForConfiguration()
+                if device.hasFlash {
+                    device.flashMode = mode
+                }
+                device.unlockForConfiguration()
+            } catch {
+                print("Error setting flash mode: \(error.localizedDescription)")
+            }
         }
     }
 }
@@ -476,6 +507,7 @@ struct CameraControlsView: View {
     @ObservedObject var cameraManager: CameraManager
     @Binding var showInstructions: Bool
     @Binding var showImagePicker: Bool
+    @State private var isFlashOn = false
     
     var body: some View {
         HStack(spacing: 0) {
@@ -484,7 +516,7 @@ struct CameraControlsView: View {
                 showImagePicker = true
             }) {
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.gray.opacity(0.3))
+                    .fill(Color.gray.opacity(0.6))
                     .frame(width: 50, height: 50)
                     .overlay(
                         Image(systemName: "photo")
@@ -510,14 +542,14 @@ struct CameraControlsView: View {
                 ZStack {
                     Circle()
                         .stroke(Color.white, lineWidth: 4)
-                        .frame(width: 70, height: 70)
+                        .frame(width: 90, height: 90)
                     
                     Circle()
-                        .fill(Color.white.opacity(0.3))
-                        .frame(width: 60, height: 60)
+                        .fill(Color.white.opacity(0.6))
+                        .frame(width: 80, height: 80)
                     
                     Image(systemName: "camera.fill")
-                        .font(.system(size: 24))
+                        .font(.system(size: 32))
                         .foregroundColor(.black)
                 }
             }
@@ -526,13 +558,20 @@ struct CameraControlsView: View {
             
             Spacer()
             
-            // Flash Off Icon
+            // Flash Toggle Button
             Button(action: {
-                // Toggle flash
+                isFlashOn.toggle()
+                cameraManager.setFlashMode(isFlashOn ? .on : .off)
             }) {
-                Image(systemName: "bolt.slash.fill")
-                    .font(.system(size: 24))
-                    .foregroundColor(.white)
+                if isFlashOn {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(.white)
+                } else {
+                    Image(systemName: "bolt.slash.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(.white)
+                }
             }
             .padding(.trailing, 30)
         }

@@ -10,17 +10,18 @@ struct ProcessingView: View {
     @StateObject private var processingManager = ProcessingManager()
     @State private var showResults = false
     @State private var showImageRejected = false
+    @State private var showComingSoonPopup = false
     @State private var resultsLandmarks: [(x: Double, y: Double)] = []
     @State private var resultsPainScores: (eye: Int, ear: Int, muzzle: Int) = (0, 0, 0)
     @State private var orientedImage: UIImage?
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                // Header Section
-                ProcessingHeaderView()
-                
-                // Main Content
+        VStack(spacing: 0) {
+            // Header Section (outside ScrollView so background extends to top)
+            ProcessingHeaderView()
+            
+            // Scrollable Content
+            ScrollView {
                 VStack(spacing: 20) {
                     // Image Preview
                     ImagePreviewSection(image: orientedImage ?? capturedImage)
@@ -34,10 +35,12 @@ struct ProcessingView: View {
                         .padding(.bottom, 100) // Space for bottom nav
                 }
             }
+            .background(Color.appBackground)
         }
-        .background(Color.appBackground)
         .safeAreaInset(edge: .bottom) {
-            ProcessingBottomNavigationView()
+            ProcessingBottomNavigationView(onProfileTap: {
+                showComingSoonPopup = true
+            })
         }
         .navigationBarBackButtonHidden(true)
         .navigationDestination(isPresented: $showResults) {
@@ -73,6 +76,13 @@ struct ProcessingView: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToHome"))) { _ in
+            // Dismiss when navigating to home
+            showResults = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                dismiss()
+            }
+        }
         .overlay {
             // Image Rejected Popup
             if showImageRejected {
@@ -91,6 +101,15 @@ struct ProcessingView: View {
                 .transition(.opacity)
                 .zIndex(1000)
             }
+            
+            // Coming Soon Popup
+            if showComingSoonPopup {
+                ComingSoonPopupView(onClose: {
+                    showComingSoonPopup = false
+                })
+                .transition(.opacity)
+                .zIndex(1001)
+            }
         }
     }
 }
@@ -101,7 +120,7 @@ struct ProcessingHeaderView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Back button and title
+            // Back button and title on same row
             HStack {
                 Button(action: { dismiss() }) {
                     Image(systemName: "chevron.left")
@@ -111,26 +130,32 @@ struct ProcessingHeaderView: View {
                 }
                 
                 Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            
-            // Title section
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Analyze Cat")
-                    .font(.poppins(.bold, size: 28))
-                    .foregroundColor(.textLight)
                 
-                Text("Processing Image")
-                    .font(.poppins(.regular, size: 16))
-                    .foregroundColor(.textLight)
+                VStack(spacing: 4) {
+                    Text("Analyze Cat")
+                        .font(.poppins(.bold, size: 28))
+                        .foregroundColor(.textLight)
+                    
+                    Text("Processing Image")
+                        .font(.poppins(.regular, size: 16))
+                        .foregroundColor(.textLight)
+                }
+                .frame(maxWidth: .infinity)
+                
+                Spacer()
+                
+                // Invisible spacer to balance the back button
+                Color.clear
+                    .frame(width: 40, height: 40)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 20)
         }
-        .background(Color.headerBackground)
+        .background(
+            Color.headerBackground
+                .ignoresSafeArea(edges: .top)
+        )
     }
 }
 
@@ -301,22 +326,25 @@ class ProcessingManager: ObservableObject {
 
 // MARK: - Processing Bottom Navigation
 struct ProcessingBottomNavigationView: View {
+    let onProfileTap: () -> Void
+    
     var body: some View {
         VStack(spacing: 0) {
-            // Divider
-            Rectangle()
-                .fill(Color.black)
-                .frame(width: 134, height: 5)
-                .cornerRadius(100)
-                .padding(.top, 8)
-            
             // Navigation Items
             HStack {
-                NavButton(icon: "house", isSelected: false)
-                NavButton(icon: "magnifyingglass", isSelected: false)
-                NavButton(icon: "square.on.square", isSelected: true, size: 24, highlightColor: .purple)
-                NavButton(icon: "calendar", isSelected: false)
-                NavButton(icon: "person", isSelected: false)
+                NavButtonWithCustomIcon(isSelected: false, action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("NavigateToHome"), object: nil)
+                })
+                NavButtonWithCustomSearchIconOutline(isSelected: false, action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("NavigateToSearch"), object: nil)
+                })
+                NavButtonWithCustomCameraIcon(isSelected: false, action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("NavigateToAnalyzeCat"), object: nil)
+                })
+                NavButtonWithCustomCalendarIcon(isSelected: false, action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("NavigateToCalendar"), object: nil)
+                })
+                NavButtonWithCustomProfileIcon(action: onProfileTap)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)

@@ -1,0 +1,26 @@
+[
+  {
+    "catName": "noodle",
+    "dateTime": "2025-10-09 12:18:00",
+    "overallScore": 1,
+    "scoreBreakdown": {
+      "eye": 0,
+      "ear": 0,
+      "muzzle": 1
+    },
+    "notes": "",
+    "imagePath": "cat_images/noodle_profile.png"
+  },
+  {
+    "catName": "boba",
+    "dateTime": "2025-10-08 19:18:00",
+    "overallScore": 3,
+    "scoreBreakdown": {
+      "eye": 1,
+      "ear": 0,
+      "muzzle": 2
+    },
+    "notes": "",
+    "imagePath": "cat_images/boba_profile.png"
+  }
+]

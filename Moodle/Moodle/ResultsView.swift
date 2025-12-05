@@ -17,28 +17,36 @@ struct ResultsView: View {
     @Environment(\.presentationMode) var presentationMode
     @State private var notes: String = ""
     @State private var showSaveConfirmation = false
+    @State private var isKeyboardVisible = false
+    @State private var showComingSoonPopup = false
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                // Header
-                ResultsHeaderView(onBack: {
-                    // Pop back to AnalyzeCatView by dismissing multiple times
-                    // Navigation stack: AnalyzeCatView -> CameraView -> ImagePreviewView -> ProcessingView -> ResultsView
-                    // We need to pop 3 times to get back to AnalyzeCatView
-                    popToAnalyzeCatView()
-                })
-                
-                // Main Content
+        VStack(spacing: 0) {
+            // Header (outside ScrollView so background extends to top)
+            ResultsHeaderView(onBack: {
+                // Pop back to ImagePreviewView by dismissing twice
+                // Navigation stack: ... -> ImagePreviewView -> ProcessingView -> ResultsView
+                // We need to pop 2 times to get back to ImagePreviewView
+                popToImagePreviewView()
+            })
+            
+            // Scrollable Content
+            ScrollView {
                 VStack(spacing: 20) {
                     // Cat Image with Landmarks
                     CatImageWithLandmarksView(image: capturedImage, landmarks: landmarks)
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
+                        .onTapGesture {
+                            dismissKeyboard()
+                        }
                     
                     // Disclaimer
                     DisclaimerView()
                         .padding(.horizontal, 20)
+                        .onTapGesture {
+                            dismissKeyboard()
+                        }
                     
                     // Pain Score Card
                     PainScoreCardView(
@@ -48,6 +56,9 @@ struct ResultsView: View {
                         muzzleScore: painScores.muzzle
                     )
                     .padding(.horizontal, 20)
+                    .onTapGesture {
+                        dismissKeyboard()
+                    }
                     
                     // EYES Score Display
                     PainScoreDisplayView(
@@ -55,6 +66,9 @@ struct ResultsView: View {
                         score: painScores.eye
                     )
                     .padding(.horizontal, 20)
+                    .onTapGesture {
+                        dismissKeyboard()
+                    }
                     
                     // EARS Score Display
                     PainScoreDisplayView(
@@ -62,6 +76,9 @@ struct ResultsView: View {
                         score: painScores.ear
                     )
                     .padding(.horizontal, 20)
+                    .onTapGesture {
+                        dismissKeyboard()
+                    }
                     
                     // MUZZLE Score Display
                     PainScoreDisplayView(
@@ -69,6 +86,9 @@ struct ResultsView: View {
                         score: painScores.muzzle
                     )
                     .padding(.horizontal, 20)
+                    .onTapGesture {
+                        dismissKeyboard()
+                    }
                     
                     // NOTES Section
                     NotesSectionView(notes: $notes)
@@ -80,48 +100,201 @@ struct ResultsView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 100) // Space for bottom nav
+                    .onTapGesture {
+                        dismissKeyboard()
+                    }
                 }
             }
+            .background(Color.appBackground)
         }
-        .background(Color.appBackground)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 20)
+                .onEnded { value in
+                    // Dismiss keyboard on downward drag
+                    if value.translation.height > 50 {
+                        dismissKeyboard()
+                    }
+                }
+        )
         .safeAreaInset(edge: .bottom) {
-            ResultsBottomNavigationView()
+            if !isKeyboardVisible {
+                ResultsBottomNavigationView(onProfileTap: {
+                    showComingSoonPopup = true
+                })
+            }
         }
         .navigationBarBackButtonHidden(true)
-        .alert("Entry Saved", isPresented: $showSaveConfirmation) {
-            Button("OK") {
-                dismiss()
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            withAnimation(.easeInOut(duration: 0.25)) {
+                isKeyboardVisible = true
             }
-        } message: {
-            Text("Your pain analysis entry has been saved successfully.")
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.easeInOut(duration: 0.25)) {
+                isKeyboardVisible = false
+            }
+        }
+        .overlay {
+            if showComingSoonPopup {
+                ComingSoonPopupView(onClose: {
+                    showComingSoonPopup = false
+                })
+                .transition(.opacity)
+                .zIndex(1000)
+            }
+        }
+        .overlay {
+            // Success Popup
+            if showSaveConfirmation {
+                SuccessPopupView(onClose: {
+                    popToContentView()
+                })
+                .transition(.opacity)
+                .zIndex(1000)
+            }
+            
+            // Coming Soon Popup
+            if showComingSoonPopup {
+                ComingSoonPopupView(onClose: {
+                    showComingSoonPopup = false
+                })
+                .transition(.opacity)
+                .zIndex(1001)
+            }
+        }
+    }
+    
+    private func dismissKeyboard() {
+        // Dismiss keyboard by resigning first responder
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
     
     private func saveEntry() {
-        // TODO: Save to Core Data
-        print("💾 Saving entry:")
-        print("   Cat: \(catName)")
-        print("   Eye score: \(painScores.eye)")
-        print("   Ear score: \(painScores.ear)")
-        print("   Muzzle score: \(painScores.muzzle)")
-        print("   Notes: \(notes)")
+        // Calculate overall score
+        let overallScore = painScores.eye + painScores.ear + painScores.muzzle
         
-        showSaveConfirmation = true
-    }
-    
-    private func popToAnalyzeCatView() {
-        // Pop back to AnalyzeCatView by dismissing multiple times
-        // Navigation stack: AnalyzeCatView -> CameraView -> ImagePreviewView -> ProcessingView -> ResultsView
-        // We need to pop 3 times to get back to AnalyzeCatView
-        dismiss() // Pop ProcessingView
+        // Create date formatter
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let dateTimeString = dateFormatter.string(from: Date())
         
-        // Use a small delay to ensure each dismiss completes before the next
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            dismiss() // Pop ImagePreviewView
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                dismiss() // Pop CameraView, leaving us at AnalyzeCatView
+        // Get documents directory
+        guard let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            print("❌ ERROR: Could not access documents directory")
+            return
+        }
+        
+        // Save the image and get the path
+        var imagePath: String? = nil
+        let imagesDirectory = documentsDirectory.appendingPathComponent("cat_images")
+        
+        // Create images directory if it doesn't exist
+        if !FileManager.default.fileExists(atPath: imagesDirectory.path) {
+            try? FileManager.default.createDirectory(at: imagesDirectory, withIntermediateDirectories: true)
+        }
+        
+        // Save the image with a unique filename
+        let imageFilename = "\(catName)_\(dateTimeString.replacingOccurrences(of: " ", with: "_").replacingOccurrences(of: ":", with: "-")).jpg"
+        let imageURL = imagesDirectory.appendingPathComponent(imageFilename)
+        
+        if let imageData = capturedImage.jpegData(compressionQuality: 0.8) {
+            do {
+                try imageData.write(to: imageURL)
+                imagePath = "cat_images/\(imageFilename)"
+                print("✅ Saved cat image to: \(imagePath ?? "unknown")")
+            } catch {
+                print("⚠️  WARNING: Could not save cat image: \(error.localizedDescription)")
             }
         }
+        
+        // Create new entry
+        var newEntry: [String: Any] = [
+            "catName": catName,
+            "dateTime": dateTimeString,
+            "overallScore": overallScore,
+            "scoreBreakdown": [
+                "eye": painScores.eye,
+                "ear": painScores.ear,
+                "muzzle": painScores.muzzle
+            ],
+            "notes": notes
+        ]
+        
+        if let imagePath = imagePath {
+            newEntry["imagePath"] = imagePath
+        }
+        
+        // Use a single JSON file for all entries
+        let fileURL = documentsDirectory.appendingPathComponent("pain_analysis_entries.json")
+        
+        // Read existing entries or create new array
+        var entries: [[String: Any]] = []
+        
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            // File exists, read and parse it
+            do {
+                let data = try Data(contentsOf: fileURL)
+                if let parsedEntries = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                    entries = parsedEntries
+                } else if let singleEntry = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    // Handle case where file contains a single entry object instead of array
+                    entries = [singleEntry]
+                }
+            } catch {
+                print("⚠️  WARNING: Could not read existing entries file: \(error.localizedDescription)")
+                print("   Creating new entries file...")
+            }
+        }
+        
+        // Append new entry
+        entries.append(newEntry)
+        
+        // Convert to JSON data
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: entries, options: .prettyPrinted) else {
+            print("❌ ERROR: Failed to serialize JSON data")
+            return
+        }
+        
+        // Write updated entries back to file
+        do {
+            try jsonData.write(to: fileURL)
+            print("✅ Entry saved successfully to: \(fileURL.path)")
+            print("💾 Saved entry:")
+            print("   Cat: \(catName)")
+            print("   Date/Time: \(dateTimeString)")
+            print("   Overall Score: \(overallScore)")
+            print("   Eye: \(painScores.eye), Ear: \(painScores.ear), Muzzle: \(painScores.muzzle)")
+            print("   Notes: \(notes.isEmpty ? "(none)" : notes)")
+            print("   Total entries in file: \(entries.count)")
+            
+            showSaveConfirmation = true
+        } catch {
+            print("❌ ERROR: Failed to write JSON file: \(error.localizedDescription)")
+        }
+    }
+    
+    private func popToImagePreviewView() {
+        // Pop back to ImagePreviewView by dismissing twice
+        // Navigation stack: ... -> ImagePreviewView -> ProcessingView -> ResultsView
+        // We need to pop both ResultsView and ProcessingView
+        // First dismiss ResultsView, then notify ImagePreviewView to dismiss ProcessingView
+        dismiss() // Dismiss ResultsView
+        
+        // Notify ImagePreviewView to dismiss ProcessingView
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            NotificationCenter.default.post(name: NSNotification.Name("DismissProcessingView"), object: nil)
+        }
+    }
+    
+    private func popToContentView() {
+        // Pop all the way back to ContentView (home page)
+        // Navigation stack: ContentView -> AnalyzeCatView -> CameraView -> ImagePreviewView -> ProcessingView -> ResultsView
+        // Use notification to tell ContentView to reset navigation first
+        NotificationCenter.default.post(name: NSNotification.Name("NavigateToHome"), object: nil)
+        
+        // Then dismiss ResultsView - the notification will handle resetting ContentView's navigation state
+        // We only need to dismiss ResultsView, and let the navigation stack handle the rest
+        dismiss()
     }
 }
 
@@ -131,7 +304,7 @@ struct ResultsHeaderView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Back button
+            // Back button and title on same row
             HStack {
                 Button(action: onBack) {
                     Image(systemName: "chevron.left")
@@ -141,26 +314,32 @@ struct ResultsHeaderView: View {
                 }
                 
                 Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            
-            // Title section
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Analyze Cat")
-                    .font(.poppins(.bold, size: 28))
-                    .foregroundColor(.textLight)
                 
-                Text("Results")
-                    .font(.poppins(.regular, size: 16))
-                    .foregroundColor(.textLight)
+                VStack(spacing: 4) {
+                    Text("Analyze Cat")
+                        .font(.poppins(.bold, size: 28))
+                        .foregroundColor(.textLight)
+                    
+                    Text("Results")
+                        .font(.poppins(.regular, size: 16))
+                        .foregroundColor(.textLight)
+                }
+                .frame(maxWidth: .infinity)
+                
+                Spacer()
+                
+                // Invisible spacer to balance the back button
+                Color.clear
+                    .frame(width: 40, height: 40)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 20)
         }
-        .background(Color.headerBackground)
+        .background(
+            Color.headerBackground
+                .ignoresSafeArea(edges: .top)
+        )
     }
 }
 
@@ -295,9 +474,7 @@ struct PainScoreCardView: View {
             HStack {
                 // Cat profile
                 HStack(spacing: 8) {
-                    Circle()
-                        .fill(Color.catImageBackground)
-                        .frame(width: 32, height: 32)
+                    CatImageCircle(imagePath: nil, size: 32, catName: catName)
                         .overlay(
                             Circle()
                                 .stroke(Color.textLight, lineWidth: 1)
@@ -357,6 +534,7 @@ struct PainScoreCardView: View {
 struct PainScoreDisplayView: View {
     let title: String
     let score: Int
+    @State private var isExpanded = false
     
     // Color based on score severity
     private var color: Color {
@@ -372,65 +550,195 @@ struct PainScoreDisplayView: View {
         }
     }
     
+    // Content based on title
+    private var whatItMeasuresText: String {
+        switch title.uppercased() {
+        case "EYES":
+            return "The vertical gap between eyelids. Cats in pain often squint, making this a key indicator to distinguish discomfort from normal rest."
+        case "EARS":
+            return "The position and rotation of the ears. Cats in pain often pull their ears apart and rotate them outward."
+        case "MUZZLE":
+            return "The shape and tension of the muzzle. Cats in pain display a tense, elongated muzzle rather than their normal rounded shape."
+        default:
+            return ""
+        }
+    }
+    
+    private var score0Text: String {
+        switch title.uppercased() {
+        case "EYES":
+            return "Eyes round and open. The eyelid opening is about 80% of the eye's width."
+        case "EARS":
+            return "Ears facing forward in a relaxed, alert position."
+        case "MUZZLE":
+            return "Muzzle relaxed and round."
+        default:
+            return ""
+        }
+    }
+    
+    private var score1Text: String {
+        switch title.uppercased() {
+        case "EYES":
+            return "Slightly narrowed. The eyelid opening is roughly half the eye's width."
+        case "EARS":
+            return "Ears slightly pulled apart with minor outward rotation."
+        case "MUZZLE":
+            return "Muzzle shows mild tension. The shape is slightly elongated or less rounded."
+        default:
+            return ""
+        }
+    }
+    
+    private var score2Text: String {
+        switch title.uppercased() {
+        case "EYES":
+            return "Quite narrow or squinted. The eyelid opening is noticeably less than half the eye's width."
+        case "EARS":
+            return "Ears noticeably rotated outwards and pulled apart, often flattened to the sides."
+        case "MUZZLE":
+            return "Muzzle tense and elliptical instead of round."
+        default:
+            return ""
+        }
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
                 .font(.poppins(.semiBold, size: 14))
                 .foregroundColor(.textPrimary)
             
-            // Score display with markers
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    // Slider track (visual only)
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(height: 4)
-                        .frame(maxWidth: .infinity)
-                    
-                    // Markers (dots at positions 0, 1, 2)
-                    HStack(spacing: 0) {
-                        ForEach(0..<3) { index in
-                            Circle()
-                                .fill(Color.gray.opacity(0.4))
-                                .frame(width: 8, height: 8)
-                            
-                            if index < 2 {
-                                Spacer()
-                            }
-                        }
+            // Container with white background and rounded rectangle (full width)
+            VStack(spacing: 0) {
+                // Header row with score indicator and chevron
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        isExpanded.toggle()
                     }
-                    .frame(height: 4)
-                    .frame(maxWidth: .infinity)
-                    
-                    // Score indicator (read-only)
-                    HStack {
-                        Circle()
-                            .fill(color)
-                            .frame(width: 32, height: 32)
-                            .overlay(
-                                Text("\(score)")
-                                    .font(.poppins(.bold, size: 14))
-                                    .foregroundColor(.textLight)
-                            )
-                            .offset(x: CGFloat(score) * max(0, (geometry.size.width - 32) / 2.0))
+                }) {
+                    HStack(spacing: 12) {
+                        // Score display with dots and line (takes up about half the screen width, left-aligned)
+                        ZStack(alignment: .leading) {
+                            // Horizontal line connecting the dots
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color.gray.opacity(0.2))
+                                .frame(height: 4)
+                                .frame(maxWidth: .infinity)
+                            
+                            // Dots at positions 0, 1, 2
+                            HStack(spacing: 0) {
+                                ForEach(0..<3) { index in
+                                    // Dot for each score position
+                                    ZStack {
+                                        Circle()
+                                            .fill(index == score ? color : Color.gray.opacity(0.3))
+                                            .frame(width: index == score ? 40 : 32, height: index == score ? 40 : 32)
+                                        
+                                        if index == score {
+                                            Text("\(score)")
+                                                .font(.poppins(.bold, size: 16))
+                                                .foregroundColor(.white)
+                                        }
+                                    }
+                                    
+                                    if index < 2 {
+                                        Spacer()
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .frame(width: UIScreen.main.bounds.width * 0.5) // About half the screen width
+                        .frame(height: 32)
                         
                         Spacer()
+                        
+                        // Chevron icon on the right side
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 12))
+                            .foregroundColor(.textSecondary)
+                            .rotationEffect(.degrees(isExpanded ? 180 : 0))
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(12)
+                }
+                .buttonStyle(PlainButtonStyle())
+                
+                // Dropdown content (inside the white box)
+                if isExpanded {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // WHAT IT MEASURES section
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("WHAT IT MEASURES:")
+                                .font(.poppins(.bold, size: 14))
+                                .foregroundColor(.textPrimary)
+                            
+                            Text(whatItMeasuresText)
+                                .font(.poppins(.regular, size: 14))
+                                .foregroundColor(.textPrimary)
+                        }
+                        
+                        // SCORE MEANINGS section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("SCORE MEANINGS:")
+                                .font(.poppins(.bold, size: 14))
+                                .foregroundColor(.textPrimary)
+                            
+                            // Score 0
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("0 - Healthy")
+                                    .font(.poppins(.bold, size: 14))
+                                    .foregroundColor(.textPrimary)
+                                Text(score0Text)
+                                    .font(.poppins(.regular, size: 14))
+                                    .foregroundColor(.textPrimary)
+                            }
+                            
+                            // Score 1
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("1 - Monitor")
+                                    .font(.poppins(.bold, size: 14))
+                                    .foregroundColor(.textPrimary)
+                                Text(score1Text)
+                                    .font(.poppins(.regular, size: 14))
+                                    .foregroundColor(.textPrimary)
+                            }
+                            
+                            // Score 2
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("2 - Concern")
+                                    .font(.poppins(.bold, size: 14))
+                                    .foregroundColor(.textPrimary)
+                                Text(score2Text)
+                                    .font(.poppins(.regular, size: 14))
+                                    .foregroundColor(.textPrimary)
+                            }
+                        }
+                        
+                        // Note
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Note:")
+                                .font(.poppins(.bold, size: 14))
+                                .foregroundColor(.textPrimary)
+                            Text("Consult a vet if score is 2 or symptoms worsen.")
+                                .font(.poppins(.regular, size: 14))
+                                .foregroundColor(.textPrimary)
+                                .italic()
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
-            .frame(height: 32)
-            
-            // Chevron button (for future expansion)
-            HStack {
-                Spacer()
-                Button(action: {
-                    // TODO: Expand for more details
-                }) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 12))
-                        .foregroundColor(.textSecondary)
-                }
-            }
+            .background(Color.white)
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.borderColor, lineWidth: 0.5)
+            )
         }
     }
 }
@@ -450,6 +758,7 @@ struct NotesSectionView: View {
                 .foregroundColor(.textPrimary)
                 .frame(height: 120)
                 .padding(12)
+                .scrollContentBackground(.hidden)
                 .background(Color.white)
                 .cornerRadius(12)
                 .overlay(
@@ -497,28 +806,94 @@ struct SaveEntryButton: View {
 
 // MARK: - Results Bottom Navigation
 struct ResultsBottomNavigationView: View {
+    let onProfileTap: () -> Void
+    
     var body: some View {
         VStack(spacing: 0) {
-            // Divider
-            Rectangle()
-                .fill(Color.black)
-                .frame(width: 134, height: 5)
-                .cornerRadius(100)
-                .padding(.top, 8)
-            
             // Navigation Items
             HStack {
-                NavButton(icon: "house", isSelected: false)
-                NavButton(icon: "magnifyingglass", isSelected: false)
-                NavButton(icon: "square.on.square", isSelected: true, size: 24, highlightColor: .purple)
-                NavButton(icon: "calendar", isSelected: false)
-                NavButton(icon: "person", isSelected: false)
+                NavButtonWithCustomIcon(isSelected: false, action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("NavigateToHome"), object: nil)
+                })
+                NavButtonWithCustomSearchIconOutline(isSelected: false, action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("NavigateToSearch"), object: nil)
+                })
+                NavButtonWithCustomCameraIcon(isSelected: false, action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("NavigateToAnalyzeCat"), object: nil)
+                })
+                NavButtonWithCustomCalendarIcon(isSelected: false, action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("NavigateToCalendar"), object: nil)
+                })
+                NavButtonWithCustomProfileIcon(action: onProfileTap)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
         }
         .background(Color.appBackground)
         .shadow(color: Color.borderColor, radius: 0)
+    }
+}
+
+// MARK: - Success Popup View
+struct SuccessPopupView: View {
+    let onClose: () -> Void
+    
+    var body: some View {
+        ZStack {
+            // Semi-transparent background
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+            
+            // Popup Card
+            VStack(spacing: 0) {
+                Spacer()
+                
+                VStack(spacing: 24) {
+                    // X button in top right
+                    HStack {
+                        Spacer()
+                        Button(action: onClose) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.textPrimary)
+                                .padding(8)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 20)
+                    
+                    // Green checkmark circle
+                    ZStack {
+                        Circle()
+                            .fill(Color(red: 0.20, green: 0.50, blue: 0.30)) // Dark green
+                            .frame(width: 80, height: 80)
+                        
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 40, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.top, 8)
+                    
+                    // Success text
+                    VStack(spacing: 8) {
+                        Text("Success!")
+                            .font(.poppins(.bold, size: 24))
+                            .foregroundColor(.textPrimary)
+                        
+                        Text("Entry Saved")
+                            .font(.poppins(.regular, size: 16))
+                            .foregroundColor(.textPrimary)
+                    }
+                    .padding(.bottom, 20)
+                }
+                .frame(maxWidth: .infinity)
+                .background(Color.white)
+                .cornerRadius(20)
+                .padding(.horizontal, 20)
+                
+                Spacer()
+            }
+        }
     }
 }
 

@@ -7,14 +7,15 @@ struct ImagePreviewView: View {
     @Environment(\.dismiss) var dismiss
     @State private var showCamera = false
     @State private var showProcessing = false
+    @State private var showComingSoonPopup = false
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                // Header Section
-                ImagePreviewHeaderView()
-                
-                // Main Content
+        VStack(spacing: 0) {
+            // Header Section (outside ScrollView so background extends to top)
+            ImagePreviewHeaderView()
+            
+            // Scrollable Content
+            ScrollView {
                 VStack(spacing: 20) {
                     // Great Photo Box
                     GreatPhotoBoxView()
@@ -38,14 +39,36 @@ struct ImagePreviewView: View {
                     .padding(.bottom, 100) // Space for bottom nav
                 }
             }
+            .background(Color.appBackground)
         }
-        .background(Color.appBackground)
         .safeAreaInset(edge: .bottom) {
-            ImagePreviewBottomNavigationView()
+            ImagePreviewBottomNavigationView(onProfileTap: {
+                showComingSoonPopup = true
+            })
         }
         .navigationBarBackButtonHidden(true)
+        .overlay {
+            if showComingSoonPopup {
+                ComingSoonPopupView(onClose: {
+                    showComingSoonPopup = false
+                })
+                .transition(.opacity)
+                .zIndex(1000)
+            }
+        }
         .navigationDestination(isPresented: $showProcessing) {
             ProcessingView(catName: catName, capturedImage: capturedImage)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("DismissProcessingView"))) { _ in
+            // When ResultsView wants to go back, dismiss ProcessingView
+            showProcessing = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToHome"))) { _ in
+            // Dismiss when navigating to home
+            showProcessing = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                dismiss()
+            }
         }
     }
 }
@@ -56,7 +79,7 @@ struct ImagePreviewHeaderView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Back button and title
+            // Back button and title on same row
             HStack {
                 Button(action: { dismiss() }) {
                     Image(systemName: "chevron.left")
@@ -66,26 +89,32 @@ struct ImagePreviewHeaderView: View {
                 }
                 
                 Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            
-            // Title section
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Analyze Cat")
-                    .font(.poppins(.bold, size: 28))
-                    .foregroundColor(.textLight)
                 
-                Text("Image Preview")
-                    .font(.poppins(.regular, size: 16))
-                    .foregroundColor(.textLight)
+                VStack(spacing: 4) {
+                    Text("Analyze Cat")
+                        .font(.poppins(.bold, size: 28))
+                        .foregroundColor(.textLight)
+                    
+                    Text("Image Preview")
+                        .font(.poppins(.regular, size: 16))
+                        .foregroundColor(.textLight)
+                }
+                .frame(maxWidth: .infinity)
+                
+                Spacer()
+                
+                // Invisible spacer to balance the back button
+                Color.clear
+                    .frame(width: 40, height: 40)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 20)
         }
-        .background(Color.headerBackground)
+        .background(
+            Color.headerBackground
+                .ignoresSafeArea(edges: .top)
+        )
     }
 }
 
@@ -166,22 +195,25 @@ struct ImagePreviewActionButtonsView: View {
 
 // MARK: - Image Preview Bottom Navigation
 struct ImagePreviewBottomNavigationView: View {
+    let onProfileTap: () -> Void
+    
     var body: some View {
         VStack(spacing: 0) {
-            // Divider
-            Rectangle()
-                .fill(Color.black)
-                .frame(width: 134, height: 5)
-                .cornerRadius(100)
-                .padding(.top, 8)
-            
             // Navigation Items
             HStack {
-                NavButton(icon: "house", isSelected: false)
-                NavButton(icon: "magnifyingglass", isSelected: false)
-                NavButton(icon: "square.on.square", isSelected: true, size: 24, highlightColor: .purple)
-                NavButton(icon: "calendar", isSelected: false)
-                NavButton(icon: "person", isSelected: false)
+                NavButtonWithCustomIcon(isSelected: false, action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("NavigateToHome"), object: nil)
+                })
+                NavButtonWithCustomSearchIconOutline(isSelected: false, action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("NavigateToSearch"), object: nil)
+                })
+                NavButtonWithCustomCameraIcon(isSelected: false, action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("NavigateToAnalyzeCat"), object: nil)
+                })
+                NavButtonWithCustomCalendarIcon(isSelected: false, action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("NavigateToCalendar"), object: nil)
+                })
+                NavButtonWithCustomProfileIcon(action: onProfileTap)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
